@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
+import TextInput from "ink-text-input";
 
 import {
   createDefaultAdapters,
   detectActiveAgents,
-  probeAgentAvailability,
   type ActiveAgent,
 } from "./adapters/registry.ts";
+import { createId } from "./core/ids.ts";
 import { Orchestrator } from "./core/orchestrator.ts";
-import type { ChatMessage } from "./core/types.ts";
+import type { AgentId, ChatMessage } from "./core/types.ts";
+import { createConversationScreenshot } from "./share/screenshot.ts";
 import { FileStorage } from "./storage/file-store.ts";
+import { formatThinkingIndicator, reduceThinkingAgents } from "./ui/typing-indicator.ts";
 
 type BootstrapState =
   | { status: "loading" }
@@ -20,9 +23,15 @@ export function App(): React.ReactElement {
   const { exit } = useApp();
   const [bootstrap, setBootstrap] = useState<BootstrapState>({ status: "loading" });
   const [input, setInput] = useState("");
+  const [localNotice, setLocalNotice] = useState<{
+    id: string;
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [thinkingAgents, setThinkingAgents] = useState<AgentId[]>([]);
   const [busy, setBusy] = useState(false);
-  const [showCursor, setShowCursor] = useState(true);
+  const [typingFrame, setTypingFrame] = useState(0);
   const [statusLine, setStatusLine] = useState("Booting...");
 
   useEffect(() => {
@@ -32,9 +41,7 @@ export function App(): React.ReactElement {
       try {
         setStatusLine("Checking installed CLIs...");
         const adapters = createDefaultAdapters();
-        const detectedAgents = await detectActiveAgents(adapters);
-        setStatusLine("Probing agent availability...");
-        const agents = await probeAgentAvailability(detectedAgents, process.cwd());
+        const agents = await detectActiveAgents(adapters);
         const storage = new FileStorage();
         await storage.ensureReady();
         const orchestrator = await Orchestrator.create({
@@ -70,39 +77,49 @@ export function App(): React.ReactElement {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setShowCursor((current) => !current);
-    }, 530);
+      setTypingFrame((current) => (current + 1) % 3);
+    }, 420);
 
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!localNotice) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setLocalNotice((current) => (current?.id === localNotice.id ? null : current));
+    }, 4_500);
+
+    return () => clearTimeout(timer);
+  }, [localNotice]);
+
+  useEffect(() => {
+    if (bootstrap.status !== "ready") {
+      return;
+    }
+
+    return bootstrap.orchestrator.subscribe((event) => {
+      setMessages(bootstrap.orchestrator.visibleMessages);
+      setThinkingAgents((current) => reduceThinkingAgents(current, event));
+      setStatusLine(buildStatusSummary(bootstrap.orchestrator.agents));
+    });
+  }, [bootstrap]);
+
   useInput((chunk, key) => {
     if (key.ctrl && chunk.toLowerCase() === "c") {
       exit();
-      return;
-    }
-
-    if (bootstrap.status !== "ready" || busy) {
-      return;
-    }
-
-    const containsNewline = chunk.includes("\n") || chunk.includes("\r");
-    const sanitizedChunk = chunk.replace(/[\r\n]+/g, "");
-
-    if (key.return || containsNewline) {
-      void submitMessage(input + sanitizedChunk);
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      setInput((current) => current.slice(0, -1));
-      return;
-    }
-
-    if (!key.ctrl && !key.meta && sanitizedChunk) {
-      setInput((current) => current + sanitizedChunk);
     }
   });
+
+  function pushLocalNotice(text: string, tone: "success" | "error"): void {
+    setLocalNotice({
+      id: createId("notice"),
+      tone,
+      text,
+    });
+  }
 
   async function submitMessage(overrideValue?: string): Promise<void> {
     if (bootstrap.status !== "ready") {
@@ -120,13 +137,34 @@ export function App(): React.ReactElement {
       return;
     }
 
+    if (nextInput === "/screenshot") {
+      setInput("");
+      setBusy(true);
+      setStatusLine("Preparing screenshot...");
+
+      try {
+        await createConversationScreenshot(messages);
+        pushLocalNotice("Screenshot copied to clipboard.", "success");
+        setStatusLine(buildStatusSummary(bootstrap.orchestrator.agents));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        pushLocalNotice(message, "error");
+        setStatusLine(message);
+      } finally {
+        setBusy(false);
+      }
+
+      return;
+    }
+
+    setInput("");
+    setThinkingAgents([]);
     setBusy(true);
-    setStatusLine("Waiting for agents...");
+    setStatusLine(buildStatusSummary(bootstrap.orchestrator.agents));
 
     try {
       const nextMessages = await bootstrap.orchestrator.submitUserMessage(nextInput);
       setMessages(nextMessages);
-      setInput("");
       setStatusLine(buildStatusSummary(bootstrap.orchestrator.agents));
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
@@ -140,8 +178,12 @@ export function App(): React.ReactElement {
     messages,
     input,
     busy,
-    showCursor,
+    typingFrame,
+    thinkingAgents,
+    localNotice,
     statusLine,
+    onInputChange: setInput,
+    onSubmit: submitMessage,
   });
 
   return React.createElement(
@@ -156,8 +198,12 @@ function renderContent(input: {
   messages: ChatMessage[];
   input: string;
   busy: boolean;
-  showCursor: boolean;
+  typingFrame: number;
+  thinkingAgents: AgentId[];
+  localNotice: { id: string; tone: "success" | "error"; text: string } | null;
   statusLine: string;
+  onInputChange: (value: string) => void;
+  onSubmit: (value: string) => void;
 }): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
 
@@ -204,6 +250,41 @@ function renderContent(input: {
     ),
   );
 
+  const thinkingLabel = formatThinkingIndicator(input.thinkingAgents, input.typingFrame);
+
+  if (thinkingLabel) {
+    nodes.push(
+      React.createElement(
+        Box,
+        {
+          key: "typing-indicator",
+          borderStyle: "round",
+          borderColor: "magenta",
+          paddingX: 1,
+          marginBottom: 1,
+        },
+        React.createElement(Text, { color: "magenta" }, thinkingLabel),
+      ),
+    );
+  }
+
+  if (input.localNotice) {
+    const noticeColor = input.localNotice.tone === "success" ? "green" : "red";
+    nodes.push(
+      React.createElement(
+        Box,
+        {
+          key: input.localNotice.id,
+          borderStyle: "round",
+          borderColor: noticeColor,
+          paddingX: 1,
+          marginBottom: 1,
+        },
+        React.createElement(Text, { color: noticeColor }, input.localNotice.text),
+      ),
+    );
+  }
+
   nodes.push(
     React.createElement(
       Box,
@@ -217,21 +298,28 @@ function renderContent(input: {
         Box,
         {
           borderStyle: "round",
-          borderColor: input.busy ? "yellow" : "cyan",
+          borderColor: input.busy ? "gray" : "cyan",
           paddingX: 1,
-          flexDirection: "column",
           marginBottom: 1,
         },
         React.createElement(
-          Text,
-          { color: input.busy ? "yellow" : "white" },
-          `${input.input}${input.showCursor && !input.busy ? "▍" : " "}`,
+          TextInput,
+          {
+            value: input.input,
+            onChange: input.onInputChange,
+            onSubmit: (value: string) => {
+              void input.onSubmit(value);
+            },
+            placeholder: input.busy ? "" : "typing and asking xbrain",
+            focus: input.bootstrap.status === "ready" && !input.busy,
+            showCursor: !input.busy,
+          },
         ),
       ),
       React.createElement(
         Text,
         { color: "gray" },
-        "Enter to send. Use @codex, @claudecode, or @gemini. /quit to exit.",
+        "Enter to send. Use @codex, @claudecode, or @gemini. /screenshot exports a share image. /quit or Ctrl+C to exit.",
       ),
     ),
   );
@@ -244,22 +332,33 @@ function buildStatusSummary(agents: ActiveAgent[]): string {
     return "No supported agents detected. Install Codex, Claude Code, or Gemini CLI.";
   }
 
+  const unknown = agents.filter((agent) => agent.availability === "unknown");
   const unavailable = agents.filter((agent) => agent.availability === "unavailable");
 
-  if (unavailable.length === 0) {
+  if (unknown.length === 0 && unavailable.length === 0) {
     return `Detected ${agents.map((agent) => `@${agent.id}`).join(", ")}`;
   }
 
-  return `Detected ${agents.map((agent) => `@${agent.id}`).join(", ")} | unavailable: ${unavailable
-    .map((agent) => `@${agent.id}`)
-    .join(", ")}`;
+  const segments = [`Detected ${agents.map((agent) => `@${agent.id}`).join(", ")}`];
+
+  if (unknown.length > 0) {
+    segments.push(`checking on first use: ${unknown.map((agent) => `@${agent.id}`).join(", ")}`);
+  }
+
+  if (unavailable.length > 0) {
+    segments.push(`unavailable: ${unavailable.map((agent) => `@${agent.id}`).join(", ")}`);
+  }
+
+  return segments.join(" | ");
 }
 
 function renderAgentChip(agent: ActiveAgent): React.ReactElement {
   const accent =
     agent.availability === "ready"
       ? { color: "green", label: "ready" }
-      : { color: "red", label: "unavailable" };
+      : agent.availability === "unknown"
+        ? { color: "yellow", label: "idle" }
+        : { color: "red", label: "unavailable" };
 
   return React.createElement(
     Box,
@@ -291,9 +390,9 @@ function renderMessageCard(message: ChatMessage): React.ReactElement {
   const appearance =
     message.authorId === "user"
       ? {
-          borderColor: "gray",
+          borderColor: "white",
           labelColor: "black",
-          labelBackgroundColor: "gray",
+          labelBackgroundColor: "white",
           label: " You ",
           bodyColor: "white",
         }
@@ -336,33 +435,33 @@ function getAgentAppearance(authorId: ChatMessage["authorId"]): {
   switch (authorId) {
     case "codex":
       return {
-        borderColor: "cyan",
-        labelColor: "black",
-        labelBackgroundColor: "cyan",
+        borderColor: "blue",
+        labelColor: "white",
+        labelBackgroundColor: "blue",
         label: " Codex ",
         bodyColor: "white",
       };
     case "claudecode":
       return {
-        borderColor: "green",
-        labelColor: "black",
-        labelBackgroundColor: "green",
+        borderColor: "yellow",
+        labelColor: "white",
+        labelBackgroundColor: "yellow",
         label: " Claude ",
         bodyColor: "white",
       };
     case "gemini":
       return {
-        borderColor: "yellow",
-        labelColor: "black",
-        labelBackgroundColor: "yellow",
+        borderColor: "magenta",
+        labelColor: "white",
+        labelBackgroundColor: "magenta",
         label: " Gemini ",
         bodyColor: "white",
       };
     default:
       return {
         borderColor: "white",
-        labelColor: "black",
-        labelBackgroundColor: "white",
+        labelColor: "white",
+        labelBackgroundColor: "gray",
         label: " Agent ",
         bodyColor: "white",
       };

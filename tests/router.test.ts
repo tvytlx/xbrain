@@ -14,7 +14,7 @@ test("pickLead prefers the strongest coding agent", () => {
         id: "codex",
         enabled: true,
         binary: "codex",
-        availability: "ready",
+        availability: "unknown",
         capabilityProfile: {
           coding: 1,
           analysis: 0.8,
@@ -30,7 +30,7 @@ test("pickLead prefers the strongest coding agent", () => {
         id: "gemini",
         enabled: true,
         binary: "gemini",
-        availability: "ready",
+        availability: "unknown",
         capabilityProfile: {
           coding: 0.5,
           analysis: 0.7,

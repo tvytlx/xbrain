@@ -173,3 +173,110 @@ test("orchestrator marks failed agents unavailable and skips future routing", as
   assert.equal(secondTurnMessages.some((message) => message.authorId === "gemini"), false);
   assert.equal(secondTurnMessages.some((message) => message.authorId === "codex"), true);
 });
+
+test("orchestrator does not mark timeout failures unavailable", async () => {
+  const baseDir = await mkdtemp(join(tmpdir(), "xbrain-test-"));
+  const storage = new FileStorage(baseDir);
+  const orchestrator = await Orchestrator.create({
+    storage,
+    agents: [
+      {
+        id: "codex",
+        adapter: new MockAdapter({
+          id: "codex",
+          capabilityProfile: {
+            coding: 1,
+            analysis: 0.8,
+            ideation: 0.6,
+            critique: 0.7,
+          },
+          handler: () => ({
+            kind: "failure",
+            error: "Error: timed out waiting for cloud requirements after 15s",
+            durationMs: 15_000,
+          }),
+        }),
+        enabled: true,
+        binary: "codex-mock",
+        availability: "unknown",
+        capabilityProfile: {
+          coding: 1,
+          analysis: 0.8,
+          ideation: 0.6,
+          critique: 0.7,
+        },
+        avgLatencyMs: 0,
+        recentPassRate: 0,
+        lastLeadTurn: null,
+        lastSpokeTurn: null,
+      },
+    ],
+  });
+
+  await orchestrator.submitUserMessage("Help me debug the timeout");
+
+  assert.equal(orchestrator.agents.find((agent) => agent.id === "codex")?.availability, "unknown");
+});
+
+test("orchestrator emits incremental events while a turn is in progress", async () => {
+  const baseDir = await mkdtemp(join(tmpdir(), "xbrain-test-"));
+  const storage = new FileStorage(baseDir);
+  const orchestrator = await Orchestrator.create({
+    storage,
+    agents: [
+      {
+        id: "codex",
+        adapter: new MockAdapter({
+          id: "codex",
+          capabilityProfile: {
+            coding: 1,
+            analysis: 0.8,
+            ideation: 0.6,
+            critique: 0.7,
+          },
+          handler: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            return {
+              kind: "message",
+              text: "Codex answer",
+              durationMs: 10,
+            };
+          },
+        }),
+        enabled: true,
+        binary: "codex-mock",
+        availability: "ready",
+        capabilityProfile: {
+          coding: 1,
+          analysis: 0.8,
+          ideation: 0.6,
+          critique: 0.7,
+        },
+        avgLatencyMs: 0,
+        recentPassRate: 0,
+        lastLeadTurn: null,
+        lastSpokeTurn: null,
+      },
+    ],
+  });
+
+  const observedKinds: string[] = [];
+  const unsubscribe = orchestrator.subscribe((event) => {
+    observedKinds.push(event.kind);
+  });
+
+  await orchestrator.submitUserMessage("Need help with the UX");
+  unsubscribe();
+
+  assert.deepEqual(
+    observedKinds,
+    [
+      "user_message_committed",
+      "turn_started",
+      "lead_selected",
+      "agent_invoked",
+      "assistant_message_committed",
+      "turn_completed",
+    ],
+  );
+});

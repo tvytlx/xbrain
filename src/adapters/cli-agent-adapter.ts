@@ -20,6 +20,24 @@ type CommandSpec = {
   outputFile?: string;
 };
 
+const CLAUDE_STRUCTURED_OUTPUT_SCHEMA = JSON.stringify({
+  type: "object",
+  properties: {
+    kind: {
+      type: "string",
+      enum: ["message", "pass"],
+    },
+    text: {
+      type: "string",
+    },
+    reason: {
+      type: "string",
+    },
+  },
+  required: ["kind"],
+  additionalProperties: false,
+});
+
 async function commandExists(candidates: string[]): Promise<string | null> {
   for (const candidate of candidates) {
     const result = await runProcess(candidate, ["--help"], process.cwd(), 3_000);
@@ -102,7 +120,13 @@ function runProcess(
   });
 }
 
-function parseStructuredOutput(
+type StructuredPayload = {
+  kind?: string;
+  text?: string;
+  reason?: string;
+};
+
+export function parseStructuredOutput(
   output: string,
   allowPass: boolean,
   durationMs: number,
@@ -118,24 +142,21 @@ function parseStructuredOutput(
   }
 
   try {
-    const parsed = JSON.parse(trimmed) as {
-      kind?: string;
-      text?: string;
-      reason?: string;
-    };
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const payload = extractStructuredPayload(parsed);
 
-    if (parsed.kind === "message" && parsed.text) {
+    if (payload?.kind === "message" && payload.text) {
       return {
         kind: "message",
-        text: parsed.text.trim(),
+        text: payload.text.trim(),
         durationMs,
       };
     }
 
-    if (parsed.kind === "pass" && allowPass) {
+    if (payload?.kind === "pass" && allowPass) {
       return {
         kind: "pass",
-        reason: parsed.reason?.trim() || "No substantial addition.",
+        reason: payload.reason?.trim() || "No substantial addition.",
         durationMs,
       };
     }
@@ -152,6 +173,52 @@ function parseStructuredOutput(
     error: "Agent returned invalid structured output.",
     durationMs,
   };
+}
+
+function extractStructuredPayload(parsed: Record<string, unknown>): StructuredPayload | null {
+  if (isStructuredPayload(parsed)) {
+    return parsed;
+  }
+
+  const structuredOutput = parsed.structured_output;
+
+  if (isRecord(structuredOutput) && isStructuredPayload(structuredOutput)) {
+    return structuredOutput;
+  }
+
+  const result = parsed.result;
+
+  if (typeof result === "string" && result.trim().length > 0) {
+    try {
+      const nested = JSON.parse(result) as unknown;
+
+      if (isRecord(nested) && isStructuredPayload(nested)) {
+        return nested;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isStructuredPayload(value: Record<string, unknown>): value is StructuredPayload {
+  const kind = value.kind;
+
+  if (kind !== "message" && kind !== "pass") {
+    return false;
+  }
+
+  if (kind === "message") {
+    return typeof value.text === "string";
+  }
+
+  return value.reason === undefined || typeof value.reason === "string";
 }
 
 export class CliAgentAdapter implements AgentAdapter {
@@ -262,7 +329,9 @@ export class CliAgentAdapter implements AgentAdapter {
           args: [
             "--print",
             "--output-format",
-            "text",
+            "json",
+            "--json-schema",
+            CLAUDE_STRUCTURED_OUTPUT_SCHEMA,
             "--permission-mode",
             "plan",
             input.prompt,

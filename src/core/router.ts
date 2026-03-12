@@ -78,7 +78,7 @@ export function buildLeadScores(
 ): { intent: Intent; scores: LeadScore[] } {
   const intent = classifyIntent(input);
   const scores = agents
-    .filter((agent) => agent.enabled && agent.availability === "ready")
+    .filter((agent) => agent.enabled && agent.availability !== "unavailable")
     .map((agent) => {
       const score =
         getFairnessScore(agent, snapshot.turnNumber) +

@@ -4,7 +4,7 @@ export type AgentId = (typeof AGENT_IDS)[number];
 export type ParticipantId = AgentId | "user" | "system";
 export type Intent = "coding" | "analysis" | "ideation" | "critique";
 export type AgentRoleInTurn = "lead" | "challenger";
-export type AgentAvailability = "ready" | "unavailable";
+export type AgentAvailability = "unknown" | "ready" | "unavailable";
 
 export type CapabilityProfile = Record<Intent, number>;
 

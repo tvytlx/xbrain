@@ -1,58 +1,43 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { probeAgentAvailability, type ActiveAgent } from "../src/adapters/registry.ts";
+import { detectActiveAgents } from "../src/adapters/registry.ts";
+import type { AgentAdapter } from "../src/adapters/base.ts";
 import { MockAdapter } from "../src/adapters/mock-adapter.ts";
 
-function createMockAgent(input: {
+function createMockAdapter(input: {
   id: "codex" | "claudecode" | "gemini";
   result: "ready" | "failure";
-}): ActiveAgent {
-  return {
+}): AgentAdapter {
+  return new MockAdapter({
     id: input.id,
-    adapter: new MockAdapter({
-      id: input.id,
-      capabilityProfile: {
-        coding: 1,
-        analysis: 1,
-        ideation: 1,
-        critique: 1,
-      },
-      handler: () =>
-        input.result === "ready"
-          ? {
-              kind: "message",
-              text: "ready",
-              durationMs: 5,
-            }
-          : {
-              kind: "failure",
-              error: "403 forbidden",
-              durationMs: 5,
-            },
-    }),
-    enabled: true,
-    binary: `${input.id}-mock`,
-    availability: "ready",
     capabilityProfile: {
       coding: 1,
       analysis: 1,
       ideation: 1,
       critique: 1,
     },
-    avgLatencyMs: 0,
-    recentPassRate: 0,
-    lastLeadTurn: null,
-    lastSpokeTurn: null,
-  };
+    handler: () =>
+      input.result === "ready"
+        ? {
+            kind: "message",
+            text: "ready",
+            durationMs: 5,
+          }
+        : {
+            kind: "failure",
+            error: "403 forbidden",
+            durationMs: 5,
+          },
+  });
 }
 
-test("probeAgentAvailability marks unhealthy agents unavailable", async () => {
-  const probed = await probeAgentAvailability(
-    [createMockAgent({ id: "claudecode", result: "ready" }), createMockAgent({ id: "gemini", result: "failure" })],
-    process.cwd(),
-  );
+test("detectActiveAgents marks installed agents as unknown until first real use", async () => {
+  const detected = await detectActiveAgents([
+    createMockAdapter({ id: "claudecode", result: "ready" }),
+    createMockAdapter({ id: "gemini", result: "failure" }),
+  ]);
 
-  assert.equal(probed.find((agent) => agent.id === "claudecode")?.availability, "ready");
-  assert.equal(probed.find((agent) => agent.id === "gemini")?.availability, "unavailable");
+  assert.equal(detected.find((agent) => agent.id === "claudecode")?.availability, "unknown");
+  assert.equal(detected.find((agent) => agent.id === "gemini")?.availability, "unknown");
 });

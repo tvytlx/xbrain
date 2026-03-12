@@ -7,6 +7,8 @@ import type {
   UserMessageCommittedPayload,
 } from "./types.ts";
 
+const MAX_SYSTEM_ERROR_LENGTH = 180;
+
 export function createEvent<TPayload>(
   session: SessionRecord,
   kind: EventEnvelope<TPayload>["kind"],
@@ -73,7 +75,7 @@ export function deriveChatMessages(events: EventEnvelope[]): ChatMessage[] {
           turnId: event.turnId,
           authorId: "system",
           role: "system",
-          text: `${prefix}: ${payload.error}`,
+          text: `${prefix}: ${truncateError(payload.error)}`,
           visible: true,
         });
         break;
@@ -84,4 +86,14 @@ export function deriveChatMessages(events: EventEnvelope[]): ChatMessage[] {
   }
 
   return messages;
+}
+
+function truncateError(error: string): string {
+  const normalized = error.replace(/\s+/g, " ").trim();
+
+  if (normalized.length <= MAX_SYSTEM_ERROR_LENGTH) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, MAX_SYSTEM_ERROR_LENGTH - 3).trimEnd()}...`;
 }

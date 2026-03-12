@@ -28,6 +28,7 @@ export class Orchestrator {
   #session: SessionRecord;
   #agents: ActiveAgent[];
   #events: EventEnvelope[];
+  #listeners = new Set<(event: EventEnvelope) => void>();
   #turnNumber = 0;
   #lastLeadAgentId: AgentId | null = null;
 
@@ -103,6 +104,14 @@ export class Orchestrator {
 
   get agents(): ActiveAgent[] {
     return [...this.#agents];
+  }
+
+  subscribe(listener: (event: EventEnvelope) => void): () => void {
+    this.#listeners.add(listener);
+
+    return () => {
+      this.#listeners.delete(listener);
+    };
   }
 
   async submitUserMessage(text: string): Promise<ChatMessage[]> {
@@ -335,6 +344,7 @@ export class Orchestrator {
     this.#updateLatency(input.agent, input.response.durationMs);
 
     if (input.response.kind === "message") {
+      this.#markAgentReady(input.agent);
       const messageId = createId("msg");
       const event = createEvent<AssistantMessageCommittedPayload>(
         this.#session,
@@ -362,6 +372,7 @@ export class Orchestrator {
     }
 
     if (input.response.kind === "pass") {
+      this.#markAgentReady(input.agent);
       const nextPassRate = Math.min(1, input.agent.recentPassRate * 0.6 + 0.4);
       input.agent.recentPassRate = nextPassRate;
 
@@ -402,12 +413,17 @@ export class Orchestrator {
   }
 
   #isAgentReady(agent: ActiveAgent): boolean {
-    return agent.enabled && agent.availability === "ready";
+    return agent.enabled && agent.availability !== "unavailable";
   }
 
   #markAgentUnavailable(agent: ActiveAgent, reason: string): void {
     agent.availability = "unavailable";
     agent.unavailableReason = this.#summarizeError(reason);
+  }
+
+  #markAgentReady(agent: ActiveAgent): void {
+    agent.availability = "ready";
+    agent.unavailableReason = undefined;
   }
 
   #summarizeError(error: string): string {
@@ -434,8 +450,6 @@ export class Orchestrator {
       "econnrefused",
       "service unavailable",
       "approval mode",
-      "process timed out",
-      "timed out",
     ].some((pattern) => normalized.includes(pattern));
   }
 
@@ -470,6 +484,17 @@ export class Orchestrator {
 
   async #recordEvent(event: EventEnvelope): Promise<void> {
     this.#events.push(event);
+    this.#emitEvent(event);
     await this.#storage.appendEvent(event);
+  }
+
+  #emitEvent(event: EventEnvelope): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener(event);
+      } catch {
+        // UI listeners should not break the orchestration path.
+      }
+    }
   }
 }
