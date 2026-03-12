@@ -37,3 +37,10 @@ Commands:
 - `yarn smoke`
 
 The runtime path uses Node.js native type stripping, so the app can run TypeScript sources directly on Node 22.
+
+## Release
+
+- Update `package.json` to the release version on `main`
+- Push the commit to `main`
+- Create and push a tag like `v0.1.1`
+- The `publish.yml` GitHub Actions workflow will validate the tag and publish to npm
