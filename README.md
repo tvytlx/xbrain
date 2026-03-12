@@ -2,6 +2,13 @@
 
 A local-first multi-agent chat TUI for running a human, Codex, Claude Code, and Gemini in the same room.
 
+## Installation
+
+```bash
+npm install -g xbrain
+xbrain
+```
+
 ## Features
 
 - Local-first session storage
@@ -24,13 +31,6 @@ Requirements:
 - Node.js 22+
 - Yarn
 - Installed local CLI tools for any agents you want to use
-
-Installation:
-
-```bash
-npm install -g xbrain
-xbrain
-```
 
 Commands:
 
