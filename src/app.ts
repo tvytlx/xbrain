@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 
-import { createDefaultAdapters, detectActiveAgents, type ActiveAgent } from "./adapters/registry.ts";
+import {
+  createDefaultAdapters,
+  detectActiveAgents,
+  probeAgentAvailability,
+  type ActiveAgent,
+} from "./adapters/registry.ts";
 import { Orchestrator } from "./core/orchestrator.ts";
 import type { ChatMessage } from "./core/types.ts";
 import { FileStorage } from "./storage/file-store.ts";
@@ -25,8 +30,11 @@ export function App(): React.ReactElement {
 
     async function bootstrapApp(): Promise<void> {
       try {
+        setStatusLine("Checking installed CLIs...");
         const adapters = createDefaultAdapters();
-        const agents = await detectActiveAgents(adapters);
+        const detectedAgents = await detectActiveAgents(adapters);
+        setStatusLine("Probing agent availability...");
+        const agents = await probeAgentAvailability(detectedAgents, process.cwd());
         const storage = new FileStorage();
         await storage.ensureReady();
         const orchestrator = await Orchestrator.create({
@@ -157,7 +165,7 @@ function renderContent(input: {
     React.createElement(
       Box,
       { key: "header", flexDirection: "column", marginBottom: 1 },
-      React.createElement(Text, { bold: true }, "Crosstalk"),
+      React.createElement(Text, { bold: true }, "XBrain"),
       React.createElement(Text, { color: "gray" }, input.statusLine),
     ),
   );

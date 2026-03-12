@@ -1,4 +1,4 @@
-# Crosstalk
+# XBrain
 
 A local-first multi-agent chat TUI for running a human, Codex, Claude Code, and Gemini in the same room.
 
@@ -24,6 +24,11 @@ Requirements:
 - Node.js 22+
 - Yarn
 - Installed local CLI tools for any agents you want to use
+
+Install:
+
+- `npm install -g xbrain`
+- `xbrain`
 
 Commands:
 

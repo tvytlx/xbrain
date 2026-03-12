@@ -141,8 +141,8 @@ function parseStructuredOutput(
     }
   } catch {
     return {
-      kind: "message",
-      text: trimmed,
+      kind: "failure",
+      error: trimmed,
       durationMs,
     };
   }
@@ -217,13 +217,23 @@ export class CliAgentAdapter implements AgentAdapter {
       };
     }
 
-    return parseStructuredOutput(normalizedOutput, input.allowPass, result.durationMs);
+    const parsed = parseStructuredOutput(normalizedOutput, input.allowPass, result.durationMs);
+
+    if (result.exitCode !== 0 && parsed.kind !== "message" && parsed.kind !== "pass") {
+      return {
+        kind: "failure",
+        error: result.stderr.trim() || normalizedOutput.trim() || `${this.id} exited with code ${result.exitCode}.`,
+        durationMs: result.durationMs,
+      };
+    }
+
+    return parsed;
   }
 
   async #buildCommandSpec(binary: string, input: AgentInvocation): Promise<CommandSpec> {
     switch (this.id) {
       case "codex": {
-        const tempDir = await mkdtemp(join(tmpdir(), "crosstalk-codex-"));
+        const tempDir = await mkdtemp(join(tmpdir(), "xbrain-codex-"));
         const outputFile = join(tempDir, "last-message.txt");
 
         return {

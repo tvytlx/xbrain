@@ -9,7 +9,7 @@ import { Orchestrator } from "../src/core/orchestrator.ts";
 import { FileStorage } from "../src/storage/file-store.ts";
 
 test("orchestrator records lead reply and challenger pass", async () => {
-  const baseDir = await mkdtemp(join(tmpdir(), "crosstalk-test-"));
+  const baseDir = await mkdtemp(join(tmpdir(), "xbrain-test-"));
   const storage = new FileStorage(baseDir);
   const orchestrator = await Orchestrator.create({
     storage,
@@ -92,7 +92,7 @@ test("orchestrator records lead reply and challenger pass", async () => {
 });
 
 test("orchestrator marks failed agents unavailable and skips future routing", async () => {
-  const baseDir = await mkdtemp(join(tmpdir(), "crosstalk-test-"));
+  const baseDir = await mkdtemp(join(tmpdir(), "xbrain-test-"));
   const storage = new FileStorage(baseDir);
   const orchestrator = await Orchestrator.create({
     storage,

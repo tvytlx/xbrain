@@ -8,7 +8,7 @@ import { Orchestrator } from "../src/core/orchestrator.ts";
 import { FileStorage } from "../src/storage/file-store.ts";
 
 async function main(): Promise<void> {
-  const baseDir = await mkdtemp(join(tmpdir(), "crosstalk-smoke-"));
+  const baseDir = await mkdtemp(join(tmpdir(), "xbrain-smoke-"));
   const storage = new FileStorage(baseDir);
   const orchestrator = await Orchestrator.create({
     storage,

@@ -8,7 +8,7 @@ import { createId } from "../src/core/ids.ts";
 import { FileStorage } from "../src/storage/file-store.ts";
 
 test("file storage appends and loads events", async () => {
-  const baseDir = await mkdtemp(join(tmpdir(), "crosstalk-storage-"));
+  const baseDir = await mkdtemp(join(tmpdir(), "xbrain-storage-"));
   const storage = new FileStorage(baseDir);
   await storage.ensureReady();
 
