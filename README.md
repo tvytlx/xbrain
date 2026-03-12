@@ -25,10 +25,12 @@ Requirements:
 - Yarn
 - Installed local CLI tools for any agents you want to use
 
-Install:
+Installation:
 
-- `npm install -g xbrain`
-- `xbrain`
+```bash
+npm install -g xbrain
+xbrain
+```
 
 Commands:
 
