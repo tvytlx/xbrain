@@ -1,6 +1,6 @@
 {
   "name": "xbrain",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "description": "A local-first multi-agent chat TUI for Codex, Claude Code, and Gemini.",
   "author": "Xiao Tan <tvytlx@gmail.com>",
