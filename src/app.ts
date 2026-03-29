@@ -76,12 +76,17 @@ export function App(): React.ReactElement {
   }, []);
 
   useEffect(() => {
+    if (thinkingAgents.length === 0) {
+      setTypingFrame(0);
+      return;
+    }
+
     const timer = setInterval(() => {
       setTypingFrame((current) => (current + 1) % 3);
     }, 420);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [thinkingAgents.length]);
 
   useEffect(() => {
     if (!localNotice) {

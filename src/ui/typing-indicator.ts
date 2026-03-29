@@ -36,9 +36,9 @@ export function formatThinkingIndicator(agentIds: AgentId[], frame: number): str
 
   const subject = formatAgentList(agentIds.map(getAgentDisplayName));
   const verb = agentIds.length === 1 ? "is" : "are";
-  const dots = ".".repeat((frame % 3) + 1);
+  const dots = ".".repeat((frame % 3) + 1).padEnd(3, " ");
 
-  return `${subject} ${verb} thinking${dots}`;
+  return `${subject} ${verb} thinking [${dots}]`;
 }
 
 export function getAgentDisplayName(agentId: AgentId): string {

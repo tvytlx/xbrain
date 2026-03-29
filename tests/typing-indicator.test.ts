@@ -45,13 +45,22 @@ test("reduceThinkingAgents adds and removes agents based on orchestration events
 });
 
 test("formatThinkingIndicator supports singular and plural labels", () => {
-  assert.equal(formatThinkingIndicator(["codex"], 0), "Codex is thinking.");
+  assert.equal(formatThinkingIndicator(["codex"], 0), "Codex is thinking [.  ]");
   assert.equal(
     formatThinkingIndicator(["codex", "claudecode"], 1),
-    "Codex and Claude are thinking..",
+    "Codex and Claude are thinking [.. ]",
   );
   assert.equal(
     formatThinkingIndicator(["codex", "claudecode", "gemini"], 2),
-    "Codex, Claude, and Gemini are thinking...",
+    "Codex, Claude, and Gemini are thinking [...]",
   );
+});
+
+test("formatThinkingIndicator keeps a stable width across animation frames", () => {
+  const frame0 = formatThinkingIndicator(["codex"], 0);
+  const frame1 = formatThinkingIndicator(["codex"], 1);
+  const frame2 = formatThinkingIndicator(["codex"], 2);
+
+  assert.equal(frame0?.length, frame1?.length);
+  assert.equal(frame1?.length, frame2?.length);
 });
